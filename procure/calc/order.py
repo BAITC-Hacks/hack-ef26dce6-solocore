@@ -21,7 +21,7 @@ def calculate_order_quantity(demand: float, season_factor: float, trend_factor: 
 
 def assign_urgency(expected_daily: float, stock: float, lead_time_days: int, reliable_demand: bool = True) -> tuple[str, float]:
     """Return urgency and physical-stock days of cover."""
-    if expected_daily <= 0 or not reliable_demand:
+    if expected_daily <= 0:
         return "unknown", 0.0
     cover = stock / expected_daily
     if cover < lead_time_days:

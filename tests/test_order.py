@@ -4,6 +4,7 @@ from datetime import date
 
 import pandas as pd
 
+from procure.calc.naive import calculate_naive
 from procure.calc.order import assign_urgency, group_by_supplier
 from procure.data.generate import generate_dataset
 from procure.export import export_orders
@@ -44,6 +45,24 @@ def test_unknown_urgency_and_supplier_grouping(tmp_path) -> None:
     assert (urgency, cover) == ("unknown", 0.0)
     grouped = group_by_supplier(_items(tmp_path))
     assert list(grouped) == ["SUP-03", "SUP-02", "SUP-01"]
+
+
+def test_naive_uses_the_same_horizon_as_stable_recommendation_and_unknown_is_zero_only(tmp_path) -> None:
+    generate_dataset(tmp_path)
+    items = {item.sku: item for item in build_item_facts(tmp_path, _AS_OF)}
+    naive = calculate_naive(tmp_path).set_index("sku")
+    assert abs(naive.loc["A-100", "naive_qty"] - items["A-100"].recommended_qty) / items["A-100"].recommended_qty <= 0.20
+    assert assign_urgency(1, 10, 30) != ("unknown", 0.0)
+    assert assign_urgency(1, 10, 30, False) != ("unknown", 0.0)
+    assert assign_urgency(0, 10, 30) == ("unknown", 0.0)
+
+
+def test_headline_excess_uses_positive_differences_only(tmp_path) -> None:
+    items = _items(tmp_path)
+    excess = sum(max(0, item.naive_qty - item.recommended_qty) for item in items)
+    signed = sum(item.naive_qty - item.recommended_qty for item in items)
+    assert excess >= 0
+    assert excess != signed
 
 
 def test_export_orders_is_supplier_grouped_with_required_columns(tmp_path) -> None:

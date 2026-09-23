@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from math import ceil
 from pathlib import Path
 
 import pandas as pd
@@ -20,10 +21,11 @@ def calculate_naive(data_dir: Path | str = "data") -> pd.DataFrame:
         .mean()
         .rename(columns={"qty": "naive_monthly_demand"})
     )
-    result = averages.merge(stock[["sku", "lead_time_days", "stock", "in_transit"]], on="sku", validate="one_to_one")
-    result["naive_qty"] = (
-        result["naive_monthly_demand"] * (result["lead_time_days"] / 30)
+    result = averages.merge(stock[["sku", "lead_time_days", "stock", "in_transit", "pack_size"]], on="sku", validate="one_to_one")
+    raw = (
+        result["naive_monthly_demand"] * ((result["lead_time_days"] + 14) / 30)
         - result["stock"]
         - result["in_transit"]
     ).clip(lower=0)
+    result["naive_qty"] = [ceil(value / pack) * pack if pack > 0 else ceil(value) for value, pack in zip(raw, result["pack_size"], strict=True)]
     return result[["sku", "naive_monthly_demand", "naive_qty"]].sort_values("sku").reset_index(drop=True)
