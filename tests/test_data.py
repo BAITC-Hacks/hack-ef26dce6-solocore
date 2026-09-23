@@ -40,10 +40,10 @@ def test_a500_has_one_visible_client_outlier(tmp_path) -> None:
         (sales["sku"] == "A-500")
         & (sales["date"] == "2026-03-01")
         & (sales["customer_id"] == "CUST-017")
-        & (sales["qty"] == 500)
+        & (sales["qty"] == 1500)
     ]
     assert len(outlier) == 1
-    assert len(sales[sales["qty"] == 500]) == 1
+    assert len(sales[sales["qty"] == 1500]) == 1
 
 
 def test_a400_has_exactly_two_stockout_months(tmp_path) -> None:

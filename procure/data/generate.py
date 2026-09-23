@@ -23,7 +23,7 @@ STOCK_ROWS = (
     ("A-200", "SEASONAL", "SUP-01", 45, 45, 20, 1),
     ("A-300", "GROWTH", "SUP-02", 30, 35, 0, 1),
     ("A-400", "STOCKOUT", "SUP-02", 30, 20, 0, 1),
-    ("A-500", "OUTLIER", "SUP-03", 21, 30, 0, 1),
+    ("A-500", "OUTLIER", "SUP-03", 21, 10, 0, 1),
 )
 
 
@@ -60,7 +60,7 @@ def _sales_rows(rng: np.random.Generator) -> list[tuple[str, str, int, float, st
             for customer_id, quantity in zip(customer_ids, weights, strict=True):
                 rows.append((f"{month}-01", sku, int(quantity), 100.0, customer_id, WAREHOUSE))
 
-    rows.append(("2026-03-01", "A-500", 500, 100.0, "CUST-017", WAREHOUSE))
+    rows.append(("2026-03-01", "A-500", 1500, 100.0, "CUST-017", WAREHOUSE))
     return rows
 
 

@@ -25,7 +25,7 @@ def test_a500_one_off_customer_purchase_is_detected(tmp_path) -> None:
     events = detect_one_off_orders(_sales(tmp_path))
     event = events.loc[(events["sku"] == "A-500") & (events["customer_id"] == "CUST-017")].iloc[0]
     assert event["month"] == "2026-03"
-    assert event["excluded_qty"] == 500
+    assert event["excluded_qty"] == 1500
     assert event["customer_share"] >= 0.50
     assert event["reason"] == "monthly_spike_concentrated_non_repeating_customer"
 
@@ -33,8 +33,8 @@ def test_a500_one_off_customer_purchase_is_detected(tmp_path) -> None:
 def test_a500_outlier_is_excluded_from_clean_demand(tmp_path) -> None:
     cleaned, events = clean_outlier_demand(_sales(tmp_path))
     excluded = cleaned[(cleaned["sku"] == "A-500") & (cleaned["customer_id"] == "CUST-017") & (cleaned["month"] == "2026-03")]
-    assert events.loc[events["sku"] == "A-500", "excluded_qty"].iloc[0] == 500
-    assert excluded["qty"].tolist() == [500]
+    assert events.loc[events["sku"] == "A-500", "excluded_qty"].iloc[0] == 1500
+    assert excluded["qty"].tolist() == [1500]
     assert excluded["cleaned_qty"].tolist() == [0.0]
 
 

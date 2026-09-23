@@ -43,7 +43,7 @@ def test_unknown_urgency_and_supplier_grouping(tmp_path) -> None:
     urgency, cover = assign_urgency(0, 10, 30)
     assert (urgency, cover) == ("unknown", 0.0)
     grouped = group_by_supplier(_items(tmp_path))
-    assert list(grouped) == ["SUP-02", "SUP-01", "SUP-03"]
+    assert list(grouped) == ["SUP-03", "SUP-02", "SUP-01"]
 
 
 def test_export_orders_is_supplier_grouped_with_required_columns(tmp_path) -> None:
@@ -51,4 +51,4 @@ def test_export_orders_is_supplier_grouped_with_required_columns(tmp_path) -> No
     exported = pd.read_csv(output)
     assert list(exported.columns) == ["supplier", "sku", "name", "recommended_qty", "urgency", "naive_qty", "base_demand", "restored_demand", "season_factor", "trend_factor", "excluded_outlier", "stock", "in_transit", "lead_time_days"]
     assert len(exported) == 5
-    assert exported["supplier"].tolist() == sorted(exported["supplier"].tolist(), key=lambda value: {"SUP-02": 0, "SUP-01": 1, "SUP-03": 2}[value])
+    assert exported["supplier"].tolist() == sorted(exported["supplier"].tolist(), key=lambda value: {"SUP-03": 0, "SUP-02": 1, "SUP-01": 2}[value])
