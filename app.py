@@ -324,9 +324,19 @@ with right:
         st.number_input("В пути, шт", min_value=0, step=1, key=selected_transit_key, on_change=save_in_transit, args=(selected.sku,))
         if int(in_transit_by_sku[selected.sku]) != int(selected_base.in_transit):
             st.metric("Рекомендуем", qty(selected.recommended_qty), delta=f"{signed_qty(selected.recommended_qty - selected_base.recommended_qty)}: учтены товары в пути", delta_color="inverse")
-        explanation = build_template_explanation(selected)
-        st.caption(re.sub(r"(?<=\d)\.(?=\d)", ",", explanation.text))
-        if explanation.source == "llm":
-            st.caption("● Обоснование: модель")
-        elif explanation.source == "template":
-            st.caption("○ Обоснование: шаблон")
+        with st.container(border=True):
+            st.subheader("Объяснение системы")
+            st.caption("Числа рассчитаны системой. Генеративный ИИ не подключён.")
+            st.markdown("**Системные данные**")
+            st.markdown(
+                f"Текущий SKU: {selected.sku}  \n"
+                f"Excel: {qty(selected.naive_qty)}  \n"
+                f"Рекомендуем: {qty(selected.recommended_qty)}  \n"
+                f"К заказу: {qty(order_qty(selected))}  \n"
+                f"В пути: {qty(selected.in_transit)}"
+            )
+            st.markdown(reason_for_item(selected))
+            explanation = build_template_explanation(selected)
+            st.caption(re.sub(r"(?<=\d)\.(?=\d)", ",", explanation.text))
+            st.caption("ИИ-помощник: не подключён")
+            st.caption("Расчёт и объяснение работают без внешней модели.")
