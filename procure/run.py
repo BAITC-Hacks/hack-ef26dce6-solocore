@@ -30,6 +30,7 @@ def build_item_facts(data_dir: Path | str = "data", as_of: date | None = None) -
     seasons = calculate_seasonality(timeline, trends.reset_index())
     events = detect_one_off_orders(sales).set_index("sku")
     naive_monthly = sales.assign(month=sales["date"].str[:7]).groupby("sku")["qty"].sum() / 24
+    naive_quantities = calculate_naive(source).set_index("sku")
     summary_by_sku = summaries.set_index("sku")
     now = as_of or date.today()
     facts: list[ItemFacts] = []
@@ -41,7 +42,7 @@ def build_item_facts(data_dir: Path | str = "data", as_of: date | None = None) -
         season_factor = float(seasonal["season_factor"].iloc[0]) if not seasonal.empty else 1.0
         recommended, expected_daily, horizon_need = calculate_order_quantity(float(summary.restored_demand), season_factor, float(trend.trend_factor), int(row.lead_time_days), float(row.stock), float(row.in_transit), int(row.pack_size))
         raw_demand = float(naive_monthly.loc[row.sku])
-        naive_qty, _, _ = calculate_order_quantity(raw_demand, season_factor, float(trend.trend_factor), int(row.lead_time_days), float(row.stock), float(row.in_transit), int(row.pack_size))
+        naive_qty = float(naive_quantities.loc[row.sku, "naive_qty"])
         reliable = "insufficient_history" not in summary["flags"] and "incomplete_stockout_coverage" not in summary["flags"]
         urgency, cover = assign_urgency(expected_daily, float(row.stock), int(row.lead_time_days), reliable)
         event = events.loc[row.sku] if row.sku in events.index else None

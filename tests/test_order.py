@@ -51,10 +51,19 @@ def test_naive_uses_the_same_horizon_as_stable_recommendation_and_unknown_is_zer
     generate_dataset(tmp_path)
     items = {item.sku: item for item in build_item_facts(tmp_path, _AS_OF)}
     naive = calculate_naive(tmp_path).set_index("sku")
+    assert {sku: item.naive_qty for sku, item in items.items()} == naive["naive_qty"].to_dict()
     assert abs(naive.loc["A-100", "naive_qty"] - items["A-100"].recommended_qty) / items["A-100"].recommended_qty <= 0.20
     assert assign_urgency(1, 10, 30) != ("unknown", 0.0)
     assert assign_urgency(1, 10, 30, False) != ("unknown", 0.0)
     assert assign_urgency(0, 10, 30) == ("unknown", 0.0)
+
+
+def test_raw_naive_baseline_keeps_clean_adjustments_out_of_item_facts(tmp_path) -> None:
+    items = {item.sku: item for item in _items(tmp_path)}
+    assert items["A-200"].recommended_qty > items["A-200"].naive_qty
+    assert items["A-300"].recommended_qty > items["A-300"].naive_qty
+    assert items["A-400"].recommended_qty > items["A-400"].naive_qty
+    assert items["A-500"].recommended_qty < items["A-500"].naive_qty
 
 
 def test_headline_excess_uses_positive_differences_only(tmp_path) -> None:
