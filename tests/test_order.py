@@ -47,6 +47,27 @@ def test_unknown_urgency_and_supplier_grouping(tmp_path) -> None:
     assert set(grouped) == {"SUP-01", "SUP-02", "SUP-03"}
 
 
+def test_plain_skus_have_low_urgency_and_suppliers_follow_most_urgent_item(tmp_path) -> None:
+    items = _items(tmp_path)
+    by_sku = {item.sku: item for item in items}
+    for sku in ("A-700", "A-900", "A-1000", "A-1200"):
+        item = by_sku[sku]
+        assert item.urgency == "low"
+        assert item.days_of_cover >= item.lead_time_days + 14
+
+    grouped = group_by_supplier(items)
+    priority = {"high": 0, "unknown": 1, "medium": 2, "low": 3}
+    first_items = [members[0] for members in grouped.values()]
+    assert all(
+        (priority[members[0].urgency], members[0].days_of_cover, members[0].sku)
+        == min((priority[item.urgency], item.days_of_cover, item.sku) for item in members)
+        for members in grouped.values()
+    )
+    assert [(priority[item.urgency], item.days_of_cover, item.supplier) for item in first_items] == sorted(
+        (priority[item.urgency], item.days_of_cover, item.supplier) for item in first_items
+    )
+
+
 def test_naive_uses_the_same_horizon_as_stable_recommendation_and_unknown_is_zero_only(tmp_path) -> None:
     generate_dataset(tmp_path)
     items = {item.sku: item for item in build_item_facts(tmp_path, _AS_OF)}
