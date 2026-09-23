@@ -1,0 +1,1 @@
+"""Stockout handling interface placeholder."""

@@ -1,0 +1,1 @@
+"""Order recommendation interface placeholder."""

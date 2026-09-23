@@ -1,0 +1,1 @@
+"""Template explanation interface placeholder."""

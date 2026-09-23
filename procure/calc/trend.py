@@ -1,0 +1,1 @@
+"""Trend calculation interface placeholder."""

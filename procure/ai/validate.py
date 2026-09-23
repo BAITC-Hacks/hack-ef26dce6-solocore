@@ -1,0 +1,1 @@
+"""Explanation validation interface placeholder."""

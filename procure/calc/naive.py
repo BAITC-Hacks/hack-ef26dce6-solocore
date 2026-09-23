@@ -1,0 +1,1 @@
+"""Naive calculation interface placeholder."""
