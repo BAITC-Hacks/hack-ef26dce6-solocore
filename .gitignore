@@ -1,6 +1,9 @@
 .venv/
+venv/
+.agents/
+.claude/
 __pycache__/
-*.pyc
+*.py[cod]
 .env
 .env.*
 data/*.csv
