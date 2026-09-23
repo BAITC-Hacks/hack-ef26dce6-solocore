@@ -1,0 +1,6 @@
+sku,name,supplier,lead_time_days,stock,in_transit,pack_size
+A-100,STABLE,SUP-01,30,55,0,1
+A-200,SEASONAL,SUP-01,45,45,20,1
+A-300,GROWTH,SUP-02,30,35,0,1
+A-400,STOCKOUT,SUP-02,30,20,0,1
+A-500,OUTLIER,SUP-03,21,30,0,1
