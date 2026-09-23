@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from procure.contracts import ItemFacts
+from procure.calc.order import group_by_supplier
 from procure.run import build_item_facts
 from procure.ai.template import build_template_explanation
 
@@ -36,11 +37,14 @@ def load_items(in_transit_override: tuple[str, int] | None = None) -> list[ItemF
 
 
 def qty(value: float | None) -> str:
-    return "—" if value is None else f"{value:,.0f}".replace(",", " ") + " шт"
+    return "—" if value is None else f"{value:,.0f}".replace(",", "\u2009") + " шт"
 
 
 def number(value: float | None, suffix: str) -> str:
-    return "Не рассчитано" if value is None else f"{value:,.1f}".replace(",", " ").replace(".", ",") + suffix
+    if value is None:
+        return "Не рассчитано"
+    formatted = f"{value:,.0f}" if round(float(value), 1).is_integer() else f"{value:,.1f}"
+    return formatted.replace(",", "\u2009").replace(".", ",") + suffix
 
 
 def manager_key(supplier: str) -> str:
@@ -92,6 +96,14 @@ if transit_key not in st.session_state:
     st.session_state[transit_key] = int(base_selected.in_transit)
 transit_override = int(st.session_state[transit_key])
 items = load_items((base_selected.sku, transit_override)) if transit_override != int(base_selected.in_transit) else base_items
+previous_recommendations = st.session_state.setdefault("previous_recommendations", {})
+for item in items:
+    current_recommendation = int(item.recommended_qty)
+    previous_recommendation = previous_recommendations.get(item.sku)
+    choices = st.session_state.get(manager_key(item.supplier))
+    if choices is not None and previous_recommendation is not None and choices.get(item.sku) == previous_recommendation:
+        choices[item.sku] = current_recommendation
+    previous_recommendations[item.sku] = current_recommendation
 
 st.title("Заказы поставщикам")
 st.markdown('<div class="caption">Рекомендация системы. Решение и отправку делает менеджер.<br>Все числа рассчитаны детерминированно. Модель формулирует текст и не видит числовых значений.</div>', unsafe_allow_html=True)
@@ -102,11 +114,23 @@ for column, (label, value) in zip(st.columns(3), metric_values, strict=True):
 
 left, right = st.columns((60, 40), gap="large")
 with left:
-    for supplier in SUPPLIERS:
-        supplier_items = [item for item in items if item.supplier == supplier]
+    for supplier, supplier_items in group_by_supplier(items).items():
         st.markdown(f'<div class="supplier">{SUPPLIERS[supplier]} <span style="color:#7f8da3;font-weight:500">· {supplier}</span></div>', unsafe_allow_html=True)
         locked = supplier in st.session_state.approved
-        edited = st.data_editor(supplier_table(supplier_items, supplier), hide_index=True, disabled=["Срочность", "Товар", "Excel", "Рекомендуем"] if not locked else True, column_config={"К заказу": st.column_config.NumberColumn("К заказу", min_value=0, step=1, format="%d шт")}, key=f"table_{supplier}", use_container_width=True)
+        edited = st.data_editor(
+            supplier_table(supplier_items, supplier),
+            hide_index=True,
+            disabled=["Срочность", "Товар", "Excel", "Рекомендуем"] if not locked else True,
+            column_config={
+                "Срочность": st.column_config.TextColumn(width=100),
+                "Товар": st.column_config.TextColumn(width=180),
+                "Excel": st.column_config.TextColumn(width=70),
+                "Рекомендуем": st.column_config.TextColumn(width=95),
+                "К заказу": st.column_config.NumberColumn("К заказу", min_value=0, step=1, format="%d шт", width=85),
+            },
+            key=f"table_{supplier}",
+            width="stretch",
+        )
         proposed = st.session_state[manager_key(supplier)]
         changes = []
         for item, value in zip(sorted(supplier_items, key=lambda item: (URGENCY.get(item.urgency, URGENCY["unknown"])[1], item.days_of_cover, item.sku)), edited["К заказу"], strict=True):
