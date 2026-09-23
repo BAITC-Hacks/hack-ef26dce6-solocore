@@ -22,18 +22,18 @@ SUPPLIERS = {"SUP-01": "«Каз Кабель»", "SUP-02": "«Свет Груп
 URGENCY = {"high": ("▲ Срочно", 0), "unknown": ("? Нет данных", 1), "medium": ("● Скоро", 2), "low": ("○ Запас есть", 3)}
 
 
-def load_items(in_transit_override: tuple[str, int] | None = None) -> list[ItemFacts]:
-    """Run the deterministic pipeline, optionally with one temporary transit edit."""
+def load_items(in_transit_overrides: dict[str, int] | None = None) -> list[ItemFacts]:
+    """Run the deterministic pipeline with optional temporary transit edits."""
     data_dir = Path(__file__).parent / "data"
-    if in_transit_override is None:
+    if not in_transit_overrides:
         return build_item_facts(data_dir)
-    sku, in_transit = in_transit_override
     with tempfile.TemporaryDirectory() as temporary_directory:
         temporary_data = Path(temporary_directory)
         for filename in ("sales.csv", "stock.csv", "stockout.csv"):
             shutil.copy2(data_dir / filename, temporary_data / filename)
         stock = pd.read_csv(temporary_data / "stock.csv")
-        stock.loc[stock["sku"] == sku, "in_transit"] = in_transit
+        for sku, in_transit in in_transit_overrides.items():
+            stock.loc[stock["sku"] == sku, "in_transit"] = in_transit
         stock.to_csv(temporary_data / "stock.csv", index=False)
         return build_item_facts(temporary_data)
 
@@ -49,8 +49,11 @@ def number(value: float | None, suffix: str) -> str:
     return formatted.replace(",", " ").replace(".", ",") + suffix
 
 
-def manager_key(supplier: str) -> str:
-    return f"manager_{supplier}"
+def order_qty(item: ItemFacts) -> int | None:
+    manual = st.session_state.manual_overrides.get(item.sku)
+    if manual is not None:
+        return int(manual)
+    return None if item.urgency == "unknown" else int(item.recommended_qty)
 
 
 def sorted_supplier_items(items: list[ItemFacts]) -> list[ItemFacts]:
@@ -64,16 +67,35 @@ def select_supplier_item(supplier: str, skus: tuple[str, ...]) -> None:
 
 
 def approve_supplier(supplier: str) -> None:
+    st.session_state.approval_flags[supplier] = True
     st.session_state.approved[supplier] = datetime.now().strftime("%H:%M")
+
+
+def record_order_edits(supplier: str, skus: tuple[str, ...]) -> None:
+    if st.session_state.approval_flags.get(supplier, False):
+        return
+    edited_rows = st.session_state[f"table_{supplier}"].get("edited_rows", {})
+    for row, changes in edited_rows.items():
+        if "К заказу" not in changes:
+            continue
+        sku = skus[int(row)]
+        value = int(changes["К заказу"])
+        if st.session_state.manual_overrides.get(sku) != value:
+            st.session_state.manual_overrides[sku] = value
+            st.session_state.recommendation_at_manual_edit[sku] = st.session_state.current_recommendations[sku]
+
+
+def save_in_transit(sku: str) -> None:
+    st.session_state.in_transit_by_sku[sku] = int(st.session_state[f"_in_transit_widget_{sku}"])
 
 
 def supplier_table(items: list[ItemFacts], supplier: str) -> pd.DataFrame:
     rows = []
-    choices = st.session_state.setdefault(manager_key(supplier), {item.sku: int(item.recommended_qty) for item in items})
     for item in sorted_supplier_items(items):
         urgency_text, _ = URGENCY.get(item.urgency, URGENCY["unknown"])
         selection = "▸ " if item.sku == st.session_state.selected_sku else ""
-        rows.append({"Срочность": urgency_text, "Товар": f"{selection}{item.sku} · {item.name}", "Excel": qty(item.naive_qty), "Рекомендуем": qty(item.recommended_qty), "К заказу": choices.get(item.sku)})
+        recommendation = None if item.urgency == "unknown" else item.recommended_qty
+        rows.append({"Срочность": urgency_text, "Товар": f"{selection}{item.sku} · {item.name}", "Excel": qty(item.naive_qty), "Рекомендуем": qty(recommendation), "К заказу": order_qty(item)})
     return pd.DataFrame(rows)
 
 
@@ -82,7 +104,9 @@ def calculation_steps(item: ItemFacts) -> pd.DataFrame:
     return pd.DataFrame([
         ("Очистка истории", number(item.base_demand, " шт/мес."), "Разовая продажа исключена" if item.outlier_qty else "Без исключений"),
         ("Восстановление stockout", number(correction, " шт/мес."), f"Периодов: {item.stockout_months}"),
-        ("Прогноз на горизонт", qty(item.horizon_need), f"Сезонность {item.season_factor:.2f}".replace(".", ",") + f"; тренд {item.trend_pct:+.1f}%".replace(".", ",")),
+        ("× Сезон", f"×{display_factor(item.season_factor)}", "Месячный коэффициент"),
+        ("× Устойчивый рост", f"×{display_factor(1 + item.trend_pct / 100)}", f"{item.trend_pct:+.0f}% год к году"),
+        ("Прогноз на горизонт", qty(item.horizon_need), f"Срок поставки {item.lead_time_days} дн + запас {item.review_days} дн"),
         ("Остаток и поступления", f"− {qty(item.stock)} · − {qty(item.in_transit)}", "Вычитаются после прогноза"),
     ], columns=["Шаг", "Значение", "Пояснение"])
 
@@ -94,6 +118,15 @@ def display_factor(value: float) -> str:
 def signed_qty(value: float) -> str:
     sign = "−" if value < 0 else "+"
     return f"{sign}{qty(abs(value))}"
+
+
+def difference_copy(item: ItemFacts) -> str:
+    difference = int(item.recommended_qty - item.naive_qty)
+    if abs(difference) <= 2:
+        return "Совпадает с Excel"
+    if difference < 0:
+        return f"На {qty(-difference)} меньше Excel"
+    return f"На {qty(difference)} больше Excel: без этого риск дефицита"
 
 
 def position_count(value: int) -> str:
@@ -171,26 +204,23 @@ if st.session_state.get("source_version") != source_version:
     st.session_state.base_items = load_items()
     st.session_state.source_version = source_version
 base_items = st.session_state.base_items
-if "approved" not in st.session_state:
-    st.session_state.approved = {}
+in_transit_by_sku = st.session_state.setdefault("in_transit_by_sku", {})
+for item in base_items:
+    in_transit_by_sku.setdefault(item.sku, int(item.in_transit))
+st.session_state.setdefault("manual_overrides", {})
+st.session_state.setdefault("recommendation_at_manual_edit", {})
+st.session_state.setdefault("approved", {})
+st.session_state.setdefault("approval_flags", {supplier: True for supplier in st.session_state.approved})
 default_item = next((item for item in base_items if item.outlier_qty and item.outlier_qty > 0), base_items[0])
 if "selected_sku" not in st.session_state:
     st.session_state.selected_sku = default_item.sku
-base_selected = next(item for item in base_items if item.sku == st.session_state.selected_sku)
-transit_key = f"in_transit_{base_selected.sku}"
-if transit_key not in st.session_state:
-    st.session_state[transit_key] = int(base_selected.in_transit)
-transit_override = int(st.session_state[transit_key])
-items = load_items((base_selected.sku, transit_override)) if transit_override != int(base_selected.in_transit) else base_items
-previous_recommendations = st.session_state.setdefault("previous_recommendations", {})
-for item in items:
-    current_recommendation = int(item.recommended_qty)
-    previous_recommendation = previous_recommendations.get(item.sku)
-    choices = st.session_state.get(manager_key(item.supplier))
-    if (item.supplier not in st.session_state.approved and choices is not None
-            and previous_recommendation is not None and choices.get(item.sku) == previous_recommendation):
-        choices[item.sku] = current_recommendation
-    previous_recommendations[item.sku] = current_recommendation
+transit_overrides = {
+    item.sku: int(in_transit_by_sku[item.sku])
+    for item in base_items
+    if int(in_transit_by_sku[item.sku]) != int(item.in_transit)
+}
+items = load_items(transit_overrides) if transit_overrides else base_items
+st.session_state.current_recommendations = {item.sku: int(item.recommended_qty) for item in items}
 
 st.title("Заказы поставщикам")
 st.caption("Рекомендация системы. Решение и отправку делает менеджер.")
@@ -217,10 +247,10 @@ with left:
         lead_times = sorted({item.lead_time_days for item in supplier_items})
         lead_label = str(lead_times[0]) if len(lead_times) == 1 else f"{lead_times[0]}–{lead_times[-1]}"
         st.subheader(f"{SUPPLIERS[supplier]} · {position_count(len(supplier_items))} · срок {lead_label} дн")
-        locked = supplier in st.session_state.approved
+        locked = st.session_state.approval_flags.get(supplier, False)
         ordered_items = sorted_supplier_items(supplier_items)
         table_data = supplier_table(supplier_items, supplier)
-        edited = st.data_editor(
+        st.data_editor(
             table_data,
             hide_index=True,
             disabled=True if locked else ["Срочность", "Excel", "Рекомендуем"],
@@ -238,15 +268,17 @@ with left:
                 "К заказу": st.column_config.NumberColumn("К заказу", min_value=0, step=1, format="%d шт", width=85, alignment="right", help="Измените количество перед утверждением"),
             },
             key=f"table_{supplier}",
+            on_change=record_order_edits,
+            args=(supplier, tuple(item.sku for item in ordered_items)),
             width="stretch",
         )
-        proposed = st.session_state[manager_key(supplier)]
         changes = []
-        for item, value in zip(ordered_items, edited["К заказу"], strict=True):
-            if pd.notna(value):
-                proposed[item.sku] = int(value)
-                if int(value) != int(item.recommended_qty):
-                    changes.append(f"Изменено вручную: {item.name} — {qty(int(value))} вместо {qty(item.recommended_qty)}")
+        for item in ordered_items:
+            if item.sku in st.session_state.manual_overrides:
+                original_recommendation = st.session_state.recommendation_at_manual_edit[item.sku]
+                changes.append(f"Изменено вручную: {item.name} — {qty(st.session_state.manual_overrides[item.sku])} вместо {qty(original_recommendation)}")
+                if int(item.recommended_qty) != original_recommendation:
+                    changes.append(f"Рекомендация изменилась: {qty(item.recommended_qty)}")
         for change in changes:
             st.caption(change)
         if locked:
@@ -261,31 +293,36 @@ with right:
         selected = next(item for item in items if item.sku == selected_sku)
         selected_base = next(item for item in base_items if item.sku == selected_sku)
         st.markdown(f'<div class="detail-title">{escape(selected.sku)} · {escape(selected.name)}</div>', unsafe_allow_html=True)
+        if selected.urgency == "unknown":
+            st.caption("Рекомендуем: —")
+            st.caption("Не рассчитано: недостаточно данных для рекомендации.")
+            st.stop()
         st.markdown(
             f'<div class="comparison"><span class="cmp-old">Excel: {qty(selected.naive_qty)}</span>'
             f'<span class="cmp-arrow">→</span><span class="cmp-new">{qty(selected.recommended_qty)}</span></div>'
-            f'<div class="cmp-label">Рекомендуем · разница {signed_qty(selected.recommended_qty - selected.naive_qty)}</div>',
+            f'<div class="cmp-label">{difference_copy(selected)}</div>',
             unsafe_allow_html=True,
         )
         naive_width = min(100, selected.naive_qty / max(selected.naive_qty, selected.recommended_qty, 1) * 100)
         recommended_width = min(100, selected.recommended_qty / max(selected.naive_qty, selected.recommended_qty, 1) * 100)
         st.markdown(f'<div class="bar"><span style="width:{naive_width:.0f}%"></span></div><div class="bar"><span style="width:{recommended_width:.0f}%"></span></div>', unsafe_allow_html=True)
         st.markdown('<div class="fair-copy">Excel: среднее за 24 месяца на тот же срок, минус остаток и товары в пути.</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="reason-main">{reason_for_item(selected)}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="order-choice">К заказу: {qty(st.session_state[manager_key(selected.supplier)][selected.sku])}</div>', unsafe_allow_html=True)
+        if abs(selected.recommended_qty - selected.naive_qty) > 2:
+            st.markdown(f'<div class="reason-main">{reason_for_item(selected)}</div>', unsafe_allow_html=True)
         if selected.outlier_qty:
-            st.markdown(f'<div class="excluded">Исключена разовая продажа {qty(selected.outlier_qty)} ({selected.outlier_client})</div>', unsafe_allow_html=True)
             st.dataframe(outlier_calculation_steps(selected), hide_index=True, width="stretch")
             st.caption(f"Срок поставки {selected.lead_time_days} дн + запас {selected.review_days} дн. Промежуточные значения округлены только для показа; итог рассчитан из точных значений.")
+            st.markdown(f'<div class="excluded">Исключена разовая продажа {qty(selected.outlier_qty)} ({selected.outlier_client})</div>', unsafe_allow_html=True)
         else:
             st.dataframe(calculation_steps(selected), hide_index=True, width="stretch")
+        st.markdown(f'<div class="order-choice">К заказу: {qty(order_qty(selected))}</div>', unsafe_allow_html=True)
         for label, value in [("Остаток", qty(selected.stock)), ("Хватит на", qty(selected.days_of_cover).replace(" шт", " дн")), ("Срок поставки", f"{selected.lead_time_days} дн")]:
             st.markdown(f'<div class="fact"><span>{label}</span><b>{value}</b></div>', unsafe_allow_html=True)
-        selected_transit_key = f"in_transit_{selected.sku}"
+        selected_transit_key = f"_in_transit_widget_{selected.sku}"
         if selected_transit_key not in st.session_state:
-            st.session_state[selected_transit_key] = int(selected_base.in_transit)
-        st.number_input("В пути, шт", min_value=0, step=1, key=selected_transit_key)
-        if int(st.session_state[selected_transit_key]) != int(selected_base.in_transit):
+            st.session_state[selected_transit_key] = int(in_transit_by_sku[selected.sku])
+        st.number_input("В пути, шт", min_value=0, step=1, key=selected_transit_key, on_change=save_in_transit, args=(selected.sku,))
+        if int(in_transit_by_sku[selected.sku]) != int(selected_base.in_transit):
             st.metric("Рекомендуем", qty(selected.recommended_qty), delta=f"{signed_qty(selected.recommended_qty - selected_base.recommended_qty)}: учтены товары в пути", delta_color="inverse")
         explanation = build_template_explanation(selected)
         st.caption(re.sub(r"(?<=\d)\.(?=\d)", ",", explanation.text))
