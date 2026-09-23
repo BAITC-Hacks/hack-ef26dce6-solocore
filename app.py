@@ -140,7 +140,7 @@ with right:
         selected_transit_key = f"in_transit_{selected.sku}"
         if selected_transit_key not in st.session_state:
             st.session_state[selected_transit_key] = int(selected_base.in_transit)
-        st.number_input("В пути, шт", min_value=0, step=1, key=selected_transit_key)
+        st.number_input("В пути, шт", min_value=0, step=20, key=selected_transit_key)
         if int(st.session_state[selected_transit_key]) != int(selected_base.in_transit):
             st.metric("Новая рекомендация", qty(selected.recommended_qty), delta=f"{selected.recommended_qty - selected_base.recommended_qty:+.0f} шт")
         st.markdown("### Обоснование")

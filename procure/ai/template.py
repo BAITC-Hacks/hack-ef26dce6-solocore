@@ -46,11 +46,24 @@ def _sentence_specs(facts: ItemFacts) -> list[_Sentence]:
                 protected=True,
             )
         )
-    if not math.isclose(facts.season_factor, 1.0):
+    if facts.season_factor > 1.2:
+        sentences.append(
+            _Sentence(
+                "Поставка придёт в высокий сезон (коэффициент {{season_factor}}), "
+                "поэтому объём выше среднегодового.",
+            )
+        )
+    elif not math.isclose(facts.season_factor, 1.0):
         sentences.append(_Sentence("Сезонный коэффициент — {{season_factor}}."))
 
     trend_factor = 1.0 + facts.trend_pct / 100.0
-    if not math.isclose(trend_factor, 1.0):
+    if trend_factor > 1.05:
+        sentences.append(
+            _Sentence(
+                f"Спрос растёт на {facts.trend_pct:.1f}% год к году.".replace(".", ","),
+            )
+        )
+    elif not math.isclose(trend_factor, 1.0):
         sentences.append(_Sentence("Коэффициент тренда — {{trend_factor}}."))
 
     if facts.stock != 0 and facts.in_transit != 0:
