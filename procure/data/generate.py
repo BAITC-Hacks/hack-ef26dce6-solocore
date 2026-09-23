@@ -19,12 +19,24 @@ MONTHS = tuple(
 CUSTOMERS = tuple(f"CUST-{number:03d}" for number in range(1, 21))
 
 STOCK_ROWS = (
-    ("A-100", "STABLE", "SUP-01", 30, 55, 0, 1),
-    ("A-200", "SEASONAL", "SUP-01", 45, 45, 20, 1),
-    ("A-300", "GROWTH", "SUP-02", 30, 35, 0, 1),
-    ("A-400", "STOCKOUT", "SUP-02", 30, 20, 0, 1),
-    ("A-500", "OUTLIER", "SUP-03", 21, 10, 0, 1),
+    ("A-100", "ВВГнг-LS 3x2.5 бухта 100 м", "SUP-01", 30, 55, 0, 1, "Кабель", "бухта", 145000),
+    ("A-200", "Удлинитель садовый 20 м IP44", "SUP-03", 45, 45, 20, 1, "Розетки", "шт", 18500),
+    ("A-300", "Светильник LED 36 Вт IP65", "SUP-02", 30, 35, 0, 1, "Светотехника", "шт", 8900),
+    ("A-400", "Автомат ВА47-29 3P 25А", "SUP-03", 30, 20, 0, 1, "Автоматика", "шт", 7200),
+    ("A-500", "Щит распределительный ЩРН-24", "SUP-03", 21, 10, 0, 1, "Щиты", "шт", 24500),
+    ("A-600", "ВВГнг-LS 3x1.5 бухта 100 м", "SUP-01", 30, 40, 0, 1, "Кабель", "бухта", 98000),
+    ("A-700", "ПВС 2x1.5 бухта 100 м", "SUP-01", 30, 35, 0, 1, "Кабель", "бухта", 76000),
+    ("A-800", "Прожектор LED 50 Вт IP65", "SUP-02", 30, 25, 0, 1, "Светотехника", "шт", 11200),
+    ("A-900", "Лампа LED E27 11 Вт", "SUP-02", 21, 80, 0, 1, "Светотехника", "шт", 1150),
+    ("A-1000", "Автомат ВА47-29 1P 16А", "SUP-03", 21, 60, 0, 1, "Автоматика", "шт", 1450),
+    ("A-1100", "УЗО 2P 40А 30мА", "SUP-03", 30, 25, 0, 1, "Автоматика", "шт", 9800),
+    ("A-1200", "Щит ЩРН-12", "SUP-03", 21, 18, 0, 1, "Щиты", "шт", 14800),
 )
+
+_ORDINARY_RANGES = {
+    "A-600": (65, 81), "A-700": (45, 61), "A-800": (30, 46),
+    "A-900": (95, 126), "A-1000": (70, 96), "A-1100": (28, 46), "A-1200": (18, 33),
+}
 
 
 def _monthly_total(sku: str, month: str, month_index: int, rng: np.random.Generator) -> int:
@@ -46,6 +58,9 @@ def _monthly_total(sku: str, month: str, month_index: int, rng: np.random.Genera
         return int(rng.integers(85, 96))
     if sku == "A-500":
         return int(rng.integers(40, 56))
+    if sku in _ORDINARY_RANGES:
+        lower, upper = _ORDINARY_RANGES[sku]
+        return int(rng.integers(lower, upper))
     raise ValueError(f"Unsupported SKU: {sku}")
 
 
@@ -77,7 +92,7 @@ def generate_dataset(output_dir: Path | str = "data") -> None:
 
     with (destination / "stock.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file, lineterminator="\n")
-        writer.writerow(("sku", "name", "supplier", "lead_time_days", "stock", "in_transit", "pack_size"))
+        writer.writerow(("sku", "name", "supplier", "lead_time_days", "stock", "in_transit", "pack_size", "category", "unit", "price_kzt"))
         writer.writerows(STOCK_ROWS)
 
     with (destination / "stockout.csv").open("w", newline="", encoding="utf-8") as file:

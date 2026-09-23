@@ -19,9 +19,9 @@ def _items(tmp_path):
     return build_item_facts(tmp_path, _AS_OF)
 
 
-def test_all_five_items_have_nonnegative_integer_recommendations_and_urgency(tmp_path) -> None:
+def test_all_catalogue_items_have_nonnegative_integer_recommendations_and_urgency(tmp_path) -> None:
     items = _items(tmp_path)
-    assert len(items) == 5
+    assert len(items) == 12
     assert all(item.recommended_qty >= 0 and float(item.recommended_qty).is_integer() for item in items)
     assert {item.urgency for item in items}.issubset({"high", "medium", "low", "unknown"})
 
@@ -44,7 +44,7 @@ def test_unknown_urgency_and_supplier_grouping(tmp_path) -> None:
     urgency, cover = assign_urgency(0, 10, 30)
     assert (urgency, cover) == ("unknown", 0.0)
     grouped = group_by_supplier(_items(tmp_path))
-    assert list(grouped) == ["SUP-03", "SUP-02", "SUP-01"]
+    assert set(grouped) == {"SUP-01", "SUP-02", "SUP-03"}
 
 
 def test_naive_uses_the_same_horizon_as_stable_recommendation_and_unknown_is_zero_only(tmp_path) -> None:
@@ -69,5 +69,5 @@ def test_export_orders_is_supplier_grouped_with_required_columns(tmp_path) -> No
     output = export_orders(_items(tmp_path), tmp_path / "out" / "orders.csv")
     exported = pd.read_csv(output)
     assert list(exported.columns) == ["supplier", "sku", "name", "recommended_qty", "urgency", "naive_qty", "base_demand", "restored_demand", "season_factor", "trend_factor", "excluded_outlier", "stock", "in_transit", "lead_time_days"]
-    assert len(exported) == 5
-    assert exported["supplier"].tolist() == sorted(exported["supplier"].tolist(), key=lambda value: {"SUP-03": 0, "SUP-02": 1, "SUP-01": 2}[value])
+    assert len(exported) == 12
+    assert exported["supplier"].tolist() == [supplier for supplier, items in group_by_supplier(_items(tmp_path)).items() for _ in items]

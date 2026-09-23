@@ -25,12 +25,21 @@ def test_generation_is_byte_identical(tmp_path) -> None:
 def test_sales_contains_all_skus_across_24_months(tmp_path) -> None:
     generate_dataset(tmp_path)
     sales = pd.read_csv(tmp_path / "sales.csv")
-    expected_skus = {"A-100", "A-200", "A-300", "A-400", "A-500"}
+    expected_skus = {"A-100", "A-200", "A-300", "A-400", "A-500", "A-600", "A-700", "A-800", "A-900", "A-1000", "A-1100", "A-1200"}
 
     assert set(sales["sku"]) == expected_skus
     assert sales.assign(month=sales["date"].str[:7]).groupby("sku")["month"].nunique().to_dict() == {
         sku: 24 for sku in expected_skus
     }
+
+
+def test_stock_catalogue_has_twelve_priced_items_for_three_suppliers(tmp_path) -> None:
+    generate_dataset(tmp_path)
+    stock = pd.read_csv(tmp_path / "stock.csv")
+    assert len(stock) == 12
+    assert set(stock["supplier"]) == {"SUP-01", "SUP-02", "SUP-03"}
+    assert stock[["category", "unit", "price_kzt"]].notna().all().all()
+    assert (stock["price_kzt"] > 0).all()
 
 
 def test_a500_has_one_visible_client_outlier(tmp_path) -> None:
