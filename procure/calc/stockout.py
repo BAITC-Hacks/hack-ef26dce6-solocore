@@ -39,9 +39,9 @@ def restore_stockout_demand(sales: pd.DataFrame, stockout: pd.DataFrame) -> tupl
     """
     cleaned_sales, _ = clean_outlier_demand(sales)
     monthly = cleaned_sales.groupby(["sku", "month"], as_index=False)["cleaned_qty"].sum()
-    monthly = monthly.merge(_stockout_flags(stockout), on=["sku", "month"], how="left", validate="one_to_one")
+    monthly = _stockout_flags(stockout).merge(monthly, on=["sku", "month"], how="outer", validate="one_to_one")
     monthly["has_explicit_stockout_state"] = monthly["is_stockout"].notna()
-    monthly["observed_cleaned_demand"] = monthly["cleaned_qty"]
+    monthly["observed_cleaned_demand"] = monthly["cleaned_qty"].fillna(0.0)
 
     summaries: list[dict[str, object]] = []
     evidence: list[pd.DataFrame] = []
@@ -52,7 +52,7 @@ def restore_stockout_demand(sales: pd.DataFrame, stockout: pd.DataFrame) -> tupl
         reference: float | None = None
         if not item["has_explicit_stockout_state"].all():
             flags.append("incomplete_stockout_coverage")
-            item["is_stockout"] = item["is_stockout"].fillna(False)
+        item["is_stockout"] = item["is_stockout"].fillna(False).astype(bool)
         non_stockout = item.loc[~item["is_stockout"]]
         if len(non_stockout) < 6:
             flags.append("insufficient_history")

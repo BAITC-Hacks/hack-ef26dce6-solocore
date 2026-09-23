@@ -93,3 +93,31 @@ def test_evidence_and_logic_are_not_sku_specific(tmp_path) -> None:
     assert {"month", "reference_level", "lost_demand", "observed_cleaned_demand"}.issubset(evidence.columns)
     source = inspect.getsource(restore_stockout_demand)
     assert "A-400" not in source
+
+
+def test_missing_explicit_stockout_coverage_is_reported_not_assumed_false(tmp_path) -> None:
+    sales, stockout = _inputs(tmp_path)
+    incomplete = stockout.loc[~((stockout["sku"] == "A-400") & (stockout["month"] == "2026-04"))]
+    summary, _ = restore_stockout_demand(sales, incomplete)
+
+    assert "incomplete_stockout_coverage" in _summary(summary, "A-400")["flags"]
+
+
+def test_explicit_zero_sales_stockout_month_remains_in_evidence() -> None:
+    sales = pd.DataFrame({
+        "date": [f"2026-{month:02d}-01" for month in range(1, 7)],
+        "sku": "TEST", "qty": 100, "price": 100.0,
+        "customer_id": [f"C-{month}" for month in range(1, 7)], "warehouse": "WH-01",
+    })
+    stockout = pd.DataFrame({
+        "sku": "TEST",
+        "month": [f"2026-{month:02d}" for month in range(1, 8)],
+        "is_stockout": [False] * 6 + [True],
+    })
+    summary, evidence = restore_stockout_demand(sales, stockout)
+    july = evidence.loc[(evidence["sku"] == "TEST") & (evidence["month"] == "2026-07")].iloc[0]
+
+    assert july["is_stockout"]
+    assert july["observed_cleaned_demand"] == 0
+    assert july["lost_demand"] == 100
+    assert _summary(summary, "TEST")["total_lost_demand"] == 100
